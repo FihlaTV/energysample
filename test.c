@@ -22,6 +22,15 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <termios.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <sys/time.h>
+
+int time_in_usec()
+{
+  struct timeval tv;
+
+  gettimeofday(&tv,NULL);
+  return tv.tv_usec;
+}
 
 int setup_port(int fd,int speed)
 {
@@ -93,8 +102,12 @@ int main(int argc,char **argv)
   setup_port(fd,115200);
   char buffer[1024];
 
+  int last_time=time_in_usec();
   while(1) {
     int r=read(fd,buffer,1);
-    printf("."); fflush(stdout);
+    int interval=time_in_usec()-last_time;
+    if (interval<0) interval+=1000000;
+    printf("%d\n",interval);
+    last_time=time_in_usec();
   }
 }
