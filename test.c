@@ -1,8 +1,22 @@
 /*
-Serval DNA packet radio interface
-Copyright (C) 2013 Serval Project Inc.
-Copyright (C) 2013 Paul Gardner-Stephen
- 
+Wifi channel energy sampler driver and test program.
+Paul Gardner-Stephen
+Copyright (C) 2015 Flinders University
+
+This program sends a series of pulses to power a wifi energy sampler
+using a serial port.  Byte $00 yields all low.
+
+It then listens for chirps from the energy sampler to indicate that 
+something seems to be happening on the channel.
+
+It also listens to the wifi interface at the same time using libpcap
+to see when packets are visible.
+
+It then does some basic statistics on the result to see how well
+correlated they are, i.e., whether the two events happen together, or
+whether there are false positives for the energy sampler, or false
+negatives where the energy sampler fails to notice an actual packet.
+
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
 as published by the Free Software Foundation; either version 2
@@ -23,6 +37,13 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <unistd.h>
 #include <stdlib.h>
 #include <sys/time.h>
+#include <pcap.h>
+#include <errno.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <netinet/if_ether.h>
+#include <poll.h>
 
 int time_in_usec()
 {
@@ -102,12 +123,51 @@ int main(int argc,char **argv)
   setup_port(fd,115200);
   char buffer[1024];
 
+  char errbuf[PCAP_ERRBUF_SIZE];
+  pcap_t* descr;
+  const u_char *packet;
+  struct pcap_pkthdr packet_header;     /* pcap.h */
+  
+  descr = pcap_open_live(argv[2],BUFSIZ,0,1,errbuf);
+  
+  if(descr == NULL)
+    {
+      printf("pcap_open_live(): %s\n",errbuf);
+      exit(1);
+    }
+  
   int last_time=time_in_usec();
+
+  int pcap_fd=pcap_get_selectable_fd(descr);
+
+  struct pollfd fds[2];
+
+  fds[0].fd = pcap_fd;
+  fds[0].events = POLLIN;
+  fds[1].fd = fd;
+  fds[1].events = POLLIN;
+
+  printf("Ready (fds=%d,%d).\n",pcap_fd,fd);
   while(1) {
-    int r=read(fd,buffer,1);
-    int interval=time_in_usec()-last_time;
-    if (interval<0) interval+=1000000;
-    printf("%d\n",interval);
-    last_time=time_in_usec();
+    poll(fds,2,10000);
+    if (1||fds[0].revents) {
+      packet = pcap_next(descr,&packet_header);
+      if (packet) {
+	printf("wifi: %d\n",time_in_usec());
+	fflush(stdout);
+      }
+      if (fds[1].revents) {
+	int r=read(fd,buffer,1024);
+	if (r>0) {
+	  printf("sampler: %d (%d)\n",time_in_usec(),r);
+	  fflush(stdout);
+	}
+
+	//	int interval=time_in_usec()-last_time;
+	//	if (interval<0) interval+=1000000;
+	//	printf("%d\n",interval);
+	//	last_time=time_in_usec();
+      }
+    }
   }
 }
