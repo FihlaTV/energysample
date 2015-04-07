@@ -44,6 +44,37 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <arpa/inet.h>
 #include <netinet/if_ether.h>
 #include <poll.h>
+#include <signal.h>
+
+int fd=-1;
+int count_last_second=0;
+int count_this_second=0;
+long last_seconds=0;
+
+void alarm_handler(int signal_number)
+{
+  unsigned char zero = 0;
+  if (fd!=-1) write(fd,&zero,1);
+  signal(SIGALRM, alarm_handler);
+
+  struct timeval tv;
+  gettimeofday(&tv,NULL);
+  if (tv.tv_sec!=last_seconds) {
+    count_last_second=count_this_second;
+    count_this_second=1;
+    last_seconds=tv.tv_sec;
+  } else count_this_second++;
+  
+  struct itimerval itv;
+  // Call every 1ms
+  itv.it_interval.tv_usec = 1000;
+  itv.it_interval.tv_sec = 0;
+  // With no special-case trigger
+  itv.it_value.tv_usec = 0;
+  itv.it_value.tv_sec = 0;
+  setitimer(ITIMER_REAL,&itv,NULL);
+  
+}
 
 int time_in_usec()
 {
@@ -119,7 +150,7 @@ int setup_port(int fd,int speed)
 
 int main(int argc,char **argv)
 {
-  int fd=open(argv[1],O_RDONLY);
+  fd=open(argv[1],O_RDONLY);
   setup_port(fd,115200);
   char buffer[1024];
 
@@ -136,7 +167,7 @@ int main(int argc,char **argv)
       exit(1);
     }
   
-  int last_time=time_in_usec();
+  // int last_time=time_in_usec();
 
   int pcap_fd=pcap_get_selectable_fd(descr);
 
@@ -148,18 +179,22 @@ int main(int argc,char **argv)
   fds[1].events = POLLIN;
 
   printf("Ready (fds=%d,%d).\n",pcap_fd,fd);
+  alarm_handler(-1);
+  
   while(1) {
     poll(fds,2,10000);
     if (1||fds[0].revents) {
       packet = pcap_next(descr,&packet_header);
-      if (packet) {
-	printf("wifi: %d\n",time_in_usec());
+      if (packet) { 
+	printf("wifi: %d (%d ticks last second)\n",
+	       time_in_usec(),count_last_second);
 	fflush(stdout);
       }
       if (fds[1].revents) {
 	int r=read(fd,buffer,1024);
 	if (r>0) {
-	  printf("sampler: %d (%d)\n",time_in_usec(),r);
+	  printf("sampler: %d (%d events) (%d ticks last second)\n",
+		 time_in_usec(),r, count_last_second);
 	  fflush(stdout);
 	}
 
