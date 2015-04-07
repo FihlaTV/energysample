@@ -55,7 +55,6 @@ void alarm_handler(int signal_number)
 {
   unsigned char zero = 0;
   if (fd!=-1) write(fd,&zero,1);
-  signal(SIGALRM, alarm_handler);
 
   struct timeval tv;
   gettimeofday(&tv,NULL);
@@ -65,15 +64,7 @@ void alarm_handler(int signal_number)
     last_seconds=tv.tv_sec;
   } else count_this_second++;
   
-  struct itimerval itv;
-  // Call every 1ms
-  itv.it_interval.tv_usec = 1000;
-  itv.it_interval.tv_sec = 0;
-  // With no special-case trigger
-  itv.it_value.tv_usec = 0;
-  itv.it_value.tv_sec = 0;
-  setitimer(ITIMER_REAL,&itv,NULL);
-  
+  signal(SIGALRM, alarm_handler);
 }
 
 int time_in_usec()
@@ -180,6 +171,15 @@ int main(int argc,char **argv)
 
   printf("Ready (fds=%d,%d).\n",pcap_fd,fd);
   alarm_handler(-1);
+
+  struct itimerval itv;
+  // Call every 1ms
+  itv.it_interval.tv_usec = 1000;
+  itv.it_interval.tv_sec = 0;
+  itv.it_value.tv_usec = 1000;
+  itv.it_value.tv_sec = 0;
+  setitimer(ITIMER_REAL,&itv,NULL);
+
   
   while(1) {
     poll(fds,2,10000);
