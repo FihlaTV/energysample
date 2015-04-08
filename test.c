@@ -196,7 +196,8 @@ int main(int argc,char **argv)
   // int last_time=time_in_usec();
 
   int pcap_fd=pcap_get_selectable_fd(descr);
-
+  pcap_setnonblock(descr,1,errbuf);
+  
   struct pollfd fds[2];
 
   fds[0].fd = pcap_fd;
@@ -217,7 +218,7 @@ int main(int argc,char **argv)
 
   
   while(1) {
-    poll(fds,2,10000);
+    poll(fds,2,10);
     if (fds[0].revents)
       {
 	packet = pcap_next(descr,&packet_header);
