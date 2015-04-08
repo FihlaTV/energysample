@@ -218,25 +218,21 @@ int main(int argc,char **argv)
   
   while(1) {
     poll(fds,2,10000);
-    if (1||fds[0].revents) {
-      packet = pcap_next(descr,&packet_header);
-      if (packet) { 
-	printf("wifi: %d (%d ticks last second)\n",
-	       time_in_usec(),count_last_second);
-	fflush(stdout);
-      }
-      if (fds[1].revents) {
-	int r=read(fd,buffer,1024);
-	if (r>0) {
-	  printf("sampler: %d (%d events) (%d ticks last second)\n",
-		 time_in_usec(),r, count_last_second);
+    if (fds[0].revents)
+      {
+	packet = pcap_next(descr,&packet_header);
+	if (packet) { 
+	  printf("wifi: %d (%d ticks last second)\n",
+		 time_in_usec(),count_last_second);
 	  fflush(stdout);
 	}
-
-	//	int interval=time_in_usec()-last_time;
-	//	if (interval<0) interval+=1000000;
-	//	printf("%d\n",interval);
-	//	last_time=time_in_usec();
+      }
+    if (fds[1].revents) {
+      int r=read(fd,buffer,1024);
+      if (r>0) {
+	printf("sampler: %d (%d events) (%d ticks last second)\n",
+	       time_in_usec(),r, count_last_second);
+	fflush(stdout);
       }
     }
   }
