@@ -53,7 +53,7 @@ long last_seconds=0;
 
 void alarm_handler(int signal_number)
 {
-  unsigned char zero = 0;
+  unsigned char zero = 0x00;
   if (fd!=-1) write(fd,&zero,1);
 
   struct timeval tv;
@@ -99,10 +99,11 @@ int setup_port(int fd,int speed)
   case 9600: baud_rate = B9600; break;
   case 19200: baud_rate = B19200; break;
   case 38400: baud_rate = B38400; break;
-  default:
   case 57600: baud_rate = B57600; break;
   case 115200: baud_rate = B115200; break;
   case 230400: baud_rate = B230400; break;
+  default:
+    return -1;
   }
 
   if (cfsetospeed(&t, baud_rate))
@@ -141,8 +142,42 @@ int setup_port(int fd,int speed)
 
 int main(int argc,char **argv)
 {
+  if (argc<=4) {
+    fprintf(stderr,"usage: sudo %s serialport networkinterface portspeed dutycycle\n",argv[0]);
+    fprintf(stderr,"       port_speed affects is the pulse frequency used to power the sampler.\n");
+    fprintf(stderr,"       Valid values are resticted by available serial port speeds.\n");
+    fprintf(stderr,"       USB serial port adapters may clump characters resulting in strange problems.\n");
+    fprintf(stderr,"       Pulse width will be 10x port speed.  Duty cycle will be calculated from that.\n");
+    exit(-1);
+  }
+
   fd=open(argv[1],O_RDONLY);
-  setup_port(fd,115200);
+  if (fd<0) {
+    fprintf(stderr,"Failed to open serial port '%s'\n",argv[1]);
+    exit(-1);
+  }
+  
+  int port_speed=atoi(argv[3]);
+  if (setup_port(fd,port_speed)==-1) {
+    fprintf(stderr,"Illegal serial port speed.\n");
+    exit(-1);
+  }
+  
+  int duty_cycle=atoi(argv[4]);
+  // 1% duty cycle is sending one character every 1000 serial ticks.
+  // This is because one character consists of 10 bits (start+data+stop).
+  if (duty_cycle<1||duty_cycle>75) {
+    fprintf(stderr,"Duty cycle should be between 1 and 75 percent.\n");
+    fprintf(stderr,"(values >75% may not work on some serial ports, due to lack of inter-character spacing)\n");
+    exit(-1);
+  }
+  int pulse_rate = port_speed/10.0/100.0*duty_cycle;
+  printf("Aiming to send %d pulses per second to match %d%% duty cycle.\n",
+	 pulse_rate,duty_cycle);
+  int pulse_interval=1000000/pulse_rate;
+  printf("Energy sampler will be powered for %.3fms every %.3fms\n",
+	 1000.0 * 10.0 / port_speed, pulse_interval/1000.0);
+  
   char buffer[1024];
 
   char errbuf[PCAP_ERRBUF_SIZE];
@@ -174,9 +209,9 @@ int main(int argc,char **argv)
 
   struct itimerval itv;
   // Call every 1ms
-  itv.it_interval.tv_usec = 1000;
+  itv.it_interval.tv_usec = pulse_interval;
   itv.it_interval.tv_sec = 0;
-  itv.it_value.tv_usec = 1000;
+  itv.it_value.tv_usec = pulse_interval;
   itv.it_value.tv_sec = 0;
   setitimer(ITIMER_REAL,&itv,NULL);
 
